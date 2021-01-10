@@ -22,6 +22,7 @@ from collections import Counter
 # https://github.com/briney/nwalign3
 # ftp://ftp.ncbi.nih.gov/blast/matrices/
 import nwalign3 as nw
+import operator
 
 __author__ = "Your Name"
 __copyright__ = "Universite Paris Diderot"
@@ -70,28 +71,101 @@ def get_arguments():
     return parser.parse_args()
 
 def read_fasta(amplicon_file, minseqlen):
-    pass
+    if (isfile(amplicon_file)):
+        seq = ''
+        for row in gzip.open(amplicon_file, 'r'):
+            if row.startswith(">"):
+                if len(seq)>= minseqlen:
+                    yield seq
+                seq = ''
+            else:
+                seq = seq + row.replace(" ", "").replace("\n", "") 
+        yield seq
 
 
 def dereplication_fulllength(amplicon_file, minseqlen, mincount):
-    pass
-
+    dico = {}
+    for seq in read_fasta(amplicon_file, minseqlen):
+            if seq in dico :
+                dico[seq] += 1
+            else:
+                dico.update({seq: 1})
+    
+    sorted_d = sorted(dico.items(), key=operator.itemgetter(1),reverse=True)
+    for i,j in (sorted_d):
+        if j >= mincount:
+            yield[i,j]
 
 def get_chunks(sequence, chunk_size):
-    pass
+    chunks_list = []
+    for i in range(0, len(sequence), chunk_size):
+        if len(sequence[i:i+chunk_size]) == chunk_size:
+            chunks_list.append(sequence[i:i+chunk_size])
+        
+
+    try :
+        len(chunks_list) >= 4
+    except : 
+        raise ValueError
+    else:
+        return chunks_list 
+    
 
 def get_unique(ids):
     return {}.fromkeys(ids).keys()
 
-
-def common(lst1, lst2): 
+def common(lst1, lst2):
     return list(set(lst1) & set(lst2))
 
 def cut_kmer(sequence, kmer_size):
-    pass
+    for i in range(len(sequence) - kmer_size+1):
+        yield sequence[i:i+kmer_size]
 
 def get_identity(alignment_list):
-    pass
+    count = 0
+    a, b = alignment_list
+    for i in range(len(a)):
+        if a[i] == b[i]:
+            count += 1
+    id = float(count)/float(len(a)) * 100
+    return id  
+
+def search_mates(kmer_dict, sequence, kmer_size):
+    l = []
+    res = [] 
+    for kmer in cut_kmer(sequence, kmer_size):
+        if kmer in kmer_dict.keys():
+            for i in kmer_dict[kmer]:
+                l.append(i)
+
+    cnt = Counter(l).most_common(8)
+    for i,j in cnt:
+        res.append(i)
+    return res
+
+def detect_chimera(perc_identity_matrix):
+    e = 0
+    se1 = []
+    se2 = []
+
+    for p in perc_identity_matrix:
+        e += statistics.stdev(p)
+        se1.append(p[0])
+        se2.append(p[1])
+
+    if len(set(se1)) >= 2 or len(set(se2)) >= 2:
+        ep = e/len(perc_identity_matrix)
+        if ep > 5:
+            return True
+    return False
+
+def get_unique_kmer(kmer_dict, sequence, id_seq, kmer_size):
+    for i in cut_kmer(sequence, kmer_size):
+        if i not in kmer_dict:
+            kmer_dict[i] = list()
+        kmer_dict[i].append(id_seq)
+    return kmer_dict
+
 
 def chimera_removal(amplicon_file, minseqlen, mincount, chunk_size, kmer_size):
     pass
@@ -104,17 +178,24 @@ def fill(text, width=80):
     return os.linesep.join(text[i:i+width] for i in range(0, len(text), width))
 
 def write_OTU(OTU_list, output_file):
-    pass
+    file = open(output_file, "w")
+    for i in range(len(OTU_list)):
+        fasta = fill(OTU_list[i][0])
+        file.write(">OTU_%d occurrence:%d\n" %(i+1, OTU_list[i][1]))
+        file.write(fasta)
+        file.write("\n")
+    file.close()
+
 #==============================================================
 # Main program
 #==============================================================
+
 def main():
     """
     Main program function
     """
     # Get arguments
     args = get_arguments()
-
-
+    file = args.amplicon_file
 if __name__ == '__main__':
     main()
